@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import os
+import logging
 from pathlib import Path
 from ..config.config_manager import ConfigManager
 from ..models.modelscope_client import ModelScopeClient
@@ -12,9 +13,12 @@ class MainWindow:
     """主窗口类"""
     
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("初始化主窗口")
         self.root = tk.Tk()
         self.config_manager = ConfigManager()
         self.model_client = ModelScopeClient(self.config_manager)
+        self.audio_processor = AudioProcessor()  # 初始化音频处理器
         self.current_audio = None
         
         self.setup_ui()
@@ -22,6 +26,7 @@ class MainWindow:
         
     def setup_ui(self):
         """设置用户界面"""
+        self.logger.info("设置用户界面")
         self.root.title("DiffRhythm谛韵 - AI音乐生成器")
         
         # 从配置获取窗口尺寸
@@ -73,6 +78,10 @@ class MainWindow:
         btn_settings = ttk.Button(main_frame, text="设置", command=self.open_settings)
         btn_settings.grid(row=3, column=0, pady=10)
         
+        # 日志按钮
+        btn_logs = ttk.Button(main_frame, text="查看日志", command=self.view_logs)
+        btn_logs.grid(row=3, column=1, pady=10)
+        
         # 说明标签
         info_label = ttk.Label(main_frame, text="💡 提示：输入音乐风格描述，点击生成音乐", 
                               foreground="gray", font=("微软雅黑", 9))
@@ -83,10 +92,12 @@ class MainWindow:
         
     def load_configs(self):
         """加载配置"""
-        pass  # 可以在这里加载额外的配置
+        self.logger.debug("加载配置")
+        # 可以在这里加载额外的配置
         
     def fill_example(self):
         """填充示例文本"""
+        self.logger.debug("填充示例文本")
         examples = [
             "舒缓的钢琴曲，古风纯音乐",
             "欢快的电子音乐，节拍强劲",
@@ -98,14 +109,111 @@ class MainWindow:
         self.entry_prompt.delete(0, tk.END)
         self.entry_prompt.insert(0, random.choice(examples))
         
+    def view_logs(self):
+        """查看日志文件"""
+        self.logger.info("打开日志查看器")
+        try:
+            from ..utils.logging_config import get_existing_logs, read_log_file
+            
+            # 获取日志文件列表
+            log_files = get_existing_logs()
+            
+            if not log_files:
+                messagebox.showinfo("日志", "暂无日志文件")
+                return
+                
+            # 创建日志查看窗口
+            logs_window = tk.Toplevel(self.root)
+            logs_window.title("日志查看器")
+            logs_window.geometry("800x600")
+            
+            # 居中显示日志窗口
+            parent_x = self.root.winfo_x()
+            parent_y = self.root.winfo_y()
+            parent_width = self.root.winfo_width()
+            parent_height = self.root.winfo_height()
+            x = parent_x + (parent_width - 800) // 2
+            y = parent_y + (parent_height - 600) // 2
+            logs_window.geometry(f"800x600+{x}+{y}")
+            
+            # 创建日志文件选择下拉框
+            ttk.Label(logs_window, text="选择日志文件:").pack(pady=5)
+            
+            log_names = [log_file.name for log_file in log_files]
+            log_var = tk.StringVar()
+            log_combo = ttk.Combobox(logs_window, textvariable=log_var, values=log_names, state="readonly")
+            log_combo.pack(pady=5)
+            log_combo.current(0)  # 默认选中第一个（最新的）
+            
+            # 创建文本框显示日志内容
+            text_frame = ttk.Frame(logs_window)
+            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            text_widget = tk.Text(text_frame, wrap=tk.WORD)
+            scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+            
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # 显示默认日志内容
+            selected_log = log_files[0]
+            log_content = read_log_file(selected_log)
+            text_widget.insert(tk.END, ''.join(log_content))
+            text_widget.config(state=tk.DISABLED)  # 设置为只读
+            
+            # 下拉框事件处理
+            def on_log_selected(event):
+                text_widget.config(state=tk.NORMAL)
+                text_widget.delete(1.0, tk.END)
+                
+                selected_name = log_var.get()
+                selected_log = next((f for f in log_files if f.name == selected_name), None)
+                
+                if selected_log:
+                    log_content = read_log_file(selected_log)
+                    text_widget.insert(tk.END, ''.join(log_content))
+                
+                text_widget.config(state=tk.DISABLED)
+            
+            log_combo.bind("<<ComboboxSelected>>", on_log_selected)
+            
+            # 刷新按钮
+            def refresh_logs():
+                text_widget.config(state=tk.NORMAL)
+                text_widget.delete(1.0, tk.END)
+                
+                selected_name = log_var.get()
+                selected_log = next((f for f in log_files if f.name == selected_name), None)
+                
+                if selected_log:
+                    log_content = read_log_file(selected_log)
+                    text_widget.insert(tk.END, ''.join(log_content))
+                
+                text_widget.config(state=tk.DISABLED)
+            
+            refresh_btn = ttk.Button(logs_window, text="刷新", command=refresh_logs)
+            refresh_btn.pack(pady=5)
+            
+            # 确保日志窗口在顶层
+            logs_window.transient(self.root)
+            logs_window.grab_set()
+            
+        except Exception as e:
+            self.logger.error(f"查看日志时出错: {e}")
+            messagebox.showerror("错误", f"查看日志时出错: {str(e)}")
+        
     def generate_music_threaded(self):
         """在线程中生成音乐，防止UI冻结"""
+        self.logger.info("启动音乐生成线程")
         threading.Thread(target=self.generate_music, daemon=True).start()
         
     def generate_music(self):
         """生成音乐的核心函数"""
+        self.logger.info("开始生成音乐")
         prompt = self.entry_prompt.get().strip()
         if not prompt or prompt == "例如：舒缓的钢琴曲，古风纯音乐":
+            self.logger.warning("用户未输入音乐描述")
             messagebox.showwarning("提示", "请输入音乐描述（比如：舒缓的钢琴曲，古风纯音乐）！")
             return
         
@@ -114,6 +222,7 @@ class MainWindow:
         
         try:
             # 调用云端DiffRhythm生成音乐
+            self.logger.info(f"调用模型生成音乐，提示词: {prompt}")
             result = self.model_client.generate_music(prompt)
             audio_data = result["output_audio"]
             
@@ -121,15 +230,19 @@ class MainWindow:
             
             # 临时保存播放
             temp_mp3 = "temp_music.mp3"
-            temp_path = AudioProcessor.create_temp_audio(audio_data, temp_mp3)
+            self.logger.info(f"创建临时音频文件: {temp_mp3}")
+            temp_path = self.audio_processor.create_temp_audio(audio_data, temp_mp3)
             
             # 播放音乐
-            AudioProcessor.play_audio(temp_path)
+            self.logger.info(f"播放临时音频文件: {temp_path}")
+            self.audio_processor.play_audio(temp_path)
             
             # 保存引用供后续保存使用
             self.current_audio = audio_data
+            self.logger.info("音乐生成和播放完成")
             
         except Exception as e:
+            self.logger.error(f"音乐生成失败: {str(e)}")
             error_info = str(e)
             def show_error():
                 if "network" in error_info or "timeout" in error_info.lower():
@@ -143,7 +256,9 @@ class MainWindow:
     
     def save_music(self):
         """保存音乐文件"""
+        self.logger.info("用户点击保存音乐")
         if not self.current_audio:
+            self.logger.warning("用户尝试保存音乐前未生成音乐")
             messagebox.showwarning("提示", "请先生成音乐再保存！")
             return
         
@@ -162,13 +277,17 @@ class MainWindow:
         )
         if save_path:
             try:
-                AudioProcessor.save_audio(self.current_audio, save_path)
+                self.logger.info(f"保存音乐到: {save_path}")
+                self.audio_processor.save_audio(self.current_audio, save_path)
                 messagebox.showinfo("保存成功", f"音乐已保存到：\n{save_path}")
+                self.logger.info("音乐保存成功")
             except Exception as e:
+                self.logger.error(f"保存音乐失败: {str(e)}")
                 messagebox.showerror("保存失败", f"保存出错：{str(e)}")
 
     def open_settings(self):
         """打开设置界面，允许用户输入API token"""
+        self.logger.info("打开设置窗口")
         settings_window = tk.Toplevel(self.root)
         settings_window.title("设置")
         settings_window.geometry("500x300")
@@ -208,6 +327,7 @@ class MainWindow:
         def save_token():
             token = token_var.get().strip()
             self.config_manager.set_token(token)
+            self.logger.info("用户保存了API Token")
             messagebox.showinfo("保存成功", "✅ Token已保存，重启应用后生效")
             settings_window.destroy()
         
@@ -220,4 +340,5 @@ class MainWindow:
         
     def run(self):
         """运行主窗口"""
+        self.logger.info("启动主窗口")
         self.root.mainloop()

@@ -96,6 +96,8 @@ def build_with_nuitka_selective():
         "--include-package=threading",
         "--include-package=json",
         "--include-package=pathlib",
+        "--include-package=logging",  # 包含日志模块
+        "--include-package=tkinter",  # 包含GUI模块
         "--nofollow-import-to=transformers",  # 不包含transformers，避免语法错误
         "--nofollow-import-to=PIL",
         "--nofollow-import-to=matplotlib",
