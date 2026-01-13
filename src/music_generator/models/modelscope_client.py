@@ -27,16 +27,79 @@ class ModelScopeClient:
             else:
                 self.logger.warning("⚠️ 未找到配置文件中的token，请在设置中配置API Token")
             
-            # 从配置中获取模型ID，如果配置中没有则使用默认值
-            model_id = self.config_manager.get_value('modelscope', 'model_id', 'damo/text-to-music-synthesis')
+            # 从配置中获取模型ID和版本
+            model_id = self.config_manager.get_value('modelscope', 'model_id', 'ASLP-lab/DiffRhythm-base')
+            model_revision = self.config_manager.get_value('modelscope', 'model_revision', None)
+            
+            # 尝试一些可能的音乐生成模型，优先使用配置中的模型
+            possible_models = [
+                (model_id, None),  # 用户配置的模型（不指定版本）
+                # ('ASLP-lab/DiffRhythm-base', None),  # 正确的 DiffRhythm 模型（不指定版本）
+                # ('AI-ModelScope/musicgen-melody', None),  # MusicGen，不指定版本
+                ('facebook/musicgen-melody', None),  # Facebook MusicGen，不指定版本
+                # ('damo/speech_sambert-hifigan_tts_zh-cn_16k', 'v1.0.0'),  # TTS模型（最后尝试）
+            ]
             
             # 创建模型管道
-            self._pipeline = pipeline(
-                task=Tasks.text_to_audio_synthesis,
-                model=model_id,
-                model_revision='v1.0.0',
-                trust_remote_code=True  # 信任远程代码
-            )
+            # 尝试不同的模型和任务类型
+            pipeline_created = False
+            last_error = None
+            
+            for model_to_try, version in possible_models:
+                try:
+                    self.logger.info(f"尝试加载模型: {model_to_try} (版本: {version or 'latest'})")
+                    
+                    # 准备参数
+                    pipeline_args = {
+                        'model': model_to_try,
+                        'trust_remote_code': True
+                    }
+                    if version:
+                        pipeline_args['model_revision'] = version
+                    
+                    # 尝试不同的任务类型
+                    task_types_to_try = [
+                        ('text_to_music', 'text_to_music'),
+                        ('text-to-music', 'text-to-music'),
+                        ('text_to_audio_synthesis', 'text_to_audio_synthesis'),
+                        ('text_to_speech', 'text_to_speech'),
+                        (None, '自动推断')
+                    ]
+                    
+                    for task_attr, task_name in task_types_to_try:
+                        try:
+                            if task_attr is None:
+                                # 不指定任务类型，让 ModelScope 自动推断
+                                self.logger.info("尝试自动推断任务类型")
+                                self._pipeline = pipeline(**pipeline_args)
+                            else:
+                                # 尝试指定的任务类型
+                                if hasattr(Tasks, task_attr):
+                                    task = getattr(Tasks, task_attr)
+                                    self.logger.info(f"尝试使用任务类型: {task_name}")
+                                    self._pipeline = pipeline(task=task, **pipeline_args)
+                                else:
+                                    self.logger.info(f"任务类型 {task_name} 不存在，跳过")
+                                    continue
+                            
+                            pipeline_created = True
+                            self.logger.info(f"✅ 成功使用 {task_name} 加载模型: {model_to_try}")
+                            break
+                            
+                        except Exception as task_e:
+                            self.logger.info(f"任务类型 {task_name} 失败: {task_e}")
+                            continue
+                    
+                    if pipeline_created:
+                        break
+                        
+                except Exception as e:
+                    last_error = e
+                    self.logger.warning(f"模型 {model_to_try} 加载失败: {e}")
+                    continue
+            
+            if not pipeline_created:
+                raise Exception(f"所有模型都加载失败，最后一个错误: {last_error}")
             
             self.logger.info("✅ 模型初始化成功")
             return self._pipeline
@@ -84,6 +147,6 @@ class ModelScopeClient:
         """生成音乐"""
         self.logger.info(f"开始生成音乐，提示词: {prompt}")
         pipeline = self.get_pipeline()
-        result = pipeline(input=prompt)
+        result = pipeline(text_inputs=prompt)
         self.logger.info("✅ 音乐生成完成")
         return result
