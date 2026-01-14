@@ -146,7 +146,17 @@ class ModelScopeClient:
     def generate_music(self, prompt: str) -> Dict[str, Any]:
         """生成音乐"""
         self.logger.info(f"开始生成音乐，提示词: {prompt}")
-        pipeline = self.get_pipeline()
-        result = pipeline(text_inputs=prompt)
-        self.logger.info("✅ 音乐生成完成")
-        return result
+        self.logger.info("⏳ 正在使用CPU推理，首次生成可能需要几分钟，请耐心等待...")
+        
+        try:
+            pipeline = self.get_pipeline()
+            
+            # 添加更详细的日志
+            self.logger.info("🎵 开始音乐生成推理...")
+            result = pipeline(text_inputs=prompt)
+            self.logger.info("✅ 音乐生成完成")
+            return result
+        
+        except Exception as e:
+                elf.logger.error(f"❌ 音乐生成失败: {e}")
+                raise Exception(f"音乐生成失败: {e}") from e
