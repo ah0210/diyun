@@ -154,12 +154,24 @@ python nuitka_build.py
 
  5. **Datasets库兼容性问题**:
     ```bash
-    pip install --upgrade datasets
+    pip install datasets>=3.0.0,<=3.6.0
     ```
-    或者降级到特定版本
-    ```bash
-    pip install datasets==2.18.0
-    ```
+ 目前 modelscope 版本对 datasets的支持必须在3.0.0到3.6.0之间
+ ```
+ https://github.com/modelscope/modelscope/tree/master/requirements
+addict
+attrs
+datasets>=3.0.0,<=3.6.0
+einops
+oss2
+Pillow
+python-dateutil>=2.1
+scipy
+setuptools
+simplejson>=3.3.0
+sortedcontainers>=1.5.9
+urllib3>=1.26
+```
 
 ## 许可证
 
